@@ -1,0 +1,41 @@
+name: The Row stock watch
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "test = send a test push, now = check right now"
+        type: choice
+        options: [now, test]
+        default: now
+
+permissions:
+  contents: write
+
+concurrency: watch
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check stock
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: bash check.sh ${{ inputs.mode == 'test' && '--test' || '' }}
+      - name: Save state
+        run: |
+          # GitHub pauses schedules in public repos after 60 days without commits,
+          # so also commit a heartbeat once a month.
+          date -u +%Y-%m > heartbeat
+          if [ -n "$(git status --porcelain state heartbeat)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add heartbeat
+            [ -f state ] && git add state
+            git commit -m "Update stock state"
+            git push
+          fi
